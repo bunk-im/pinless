@@ -5,7 +5,6 @@ services:
     container_name: pinless
     build:
       context: .
-      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     volumes:
