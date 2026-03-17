@@ -4,8 +4,19 @@
             "url": "https://pinterest.bunk.im",
             "regions": ["The Netherlands"],
             "cloudflare": false
+        },
+        {
+            "url": "https://pinterest.fsky.io",
+            "regions": ["Poland"],
+            "cloudflare": false
         }
     ],
-    "onion": [],
+    "onion": [
+        {
+            "url": "http://pinvnrvjzyxdglrfcf75bhqyftmr3c4gvt6lwhe6khwv2zy2yo4htlqd.onion",
+            "regions": ["Poland"],
+            "cloudflare": false
+        }
+    ],
     "i2p": []
 }
