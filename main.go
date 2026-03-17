@@ -2,9 +2,12 @@ package main
 
 import (
 	"compress/gzip"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +17,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
+
+//go:embed templates/*
+var templatesFS embed.FS
+
+//go:embed static/*
+var staticFS embed.FS
 
 type SearchResult struct {
 	Images   []string `json:"images"`
@@ -42,8 +51,13 @@ func main() {
 
 	router := gin.Default()
 
-	router.Static("/static", "./static")
-	router.LoadHTMLGlob("templates/*")
+	// Serve embedded static files
+	staticSubFS, _ := fs.Sub(staticFS, "static")
+	router.StaticFS("/static", http.FS(staticSubFS))
+
+	// Load embedded templates
+	tmpl := template.Must(template.ParseFS(templatesFS, "templates/*"))
+	router.SetHTMLTemplate(tmpl)
 
 	router.GET("/", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "index.html", nil)
