@@ -10,12 +10,10 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 )
 
 //go:embed templates/*
@@ -70,32 +68,17 @@ func main() {
 		c.HTML(http.StatusOK, "about.html", nil)
 	})
 
-	_ = godotenv.Load()
-	URL := os.Getenv("URL")
-	if URL == "" {
-		URL = "http://127.0.0.1:3000"
-	}
-
 	fmt.Println(` _____ _     _             
 |  _  |_|___| |___ ___ ___ 
 |   __| |   | | -_|_ -|_ -|
 |__|  |_|_|_|_|___|___|___|
 `)
-	fmt.Printf("Server running at %s\n\n", URL)
+	fmt.Println("Server running at http://0.0.0.0:3000")
 
 	router.Run(":3000")
 }
 
 func searchHandler(c *gin.Context) {
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Println("Error loading .env file")
-	}
-
-	URL := os.Getenv("URL")
-	if URL == "" {
-		return
-	}
 	query := c.Query("q")
 
 	// get bookmark from cookie for privacy
@@ -278,7 +261,7 @@ func searchHandler(c *gin.Context) {
 	for _, result := range responseData.ResourceResponse.Data.Results {
 		imageUrl := result.Images.Orig.URL
 		if imageUrl != "" && isAllowedDomain(imageUrl) {
-			proxyImageUrl := fmt.Sprintf("%s/image?url=%s", URL, url.QueryEscape(imageUrl))
+			proxyImageUrl := fmt.Sprintf("/image?url=%s", url.QueryEscape(imageUrl))
 			results = append(results, ResultItem{
 				ID:    result.ID,
 				Image: proxyImageUrl,
@@ -294,16 +277,6 @@ func searchHandler(c *gin.Context) {
 }
 
 func pinHandler(c *gin.Context) {
-	err := godotenv.Load()
-	if err != nil {
-		fmt.Println("Error loading .env file")
-	}
-
-	URL := os.Getenv("URL")
-	if URL == "" {
-		return
-	}
-
 	pinID := c.Param("id")
 	query := c.Query("q")
 	from := c.Query("from")
@@ -323,9 +296,9 @@ func pinHandler(c *gin.Context) {
 		csrftoken = cookie
 	}
 
-	pin := fetchPinDetails(pinID, csrftoken, URL)
+	pin := fetchPinDetails(pinID, csrftoken)
 
-	related, nextBookmark := fetchRelatedPins(pinID, csrftoken, URL, bookmark)
+	related, nextBookmark := fetchRelatedPins(pinID, csrftoken, bookmark)
 
 	if nextBookmark != "" {
 		c.SetCookie("bookmark", nextBookmark, 0, "/", "", false, true)
@@ -342,7 +315,7 @@ func pinHandler(c *gin.Context) {
 	})
 }
 
-func fetchPinDetails(pinID string, csrftoken string, baseURL string) Pin {
+func fetchPinDetails(pinID string, csrftoken string) Pin {
 	apiURL := "https://www.pinterest.com/resource/PinResource/get/"
 	sourceURL := fmt.Sprintf("/pin/%s/", pinID)
 	options := map[string]interface{}{
@@ -433,21 +406,21 @@ func fetchPinDetails(pinID string, csrftoken string, baseURL string) Pin {
 	}
 
 	if data.Images.Orig.URL != "" {
-		pin.ImageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(data.Images.Orig.URL))
+		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Orig.URL))
 	} else if data.Images.Size736x.URL != "" {
-		pin.ImageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(data.Images.Size736x.URL))
+		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Size736x.URL))
 	} else if data.Images.Size564x.URL != "" {
-		pin.ImageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(data.Images.Size564x.URL))
+		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Size564x.URL))
 	} else if data.Images.Size474x.URL != "" {
-		pin.ImageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(data.Images.Size474x.URL))
+		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Size474x.URL))
 	} else if data.Images.Size236x.URL != "" {
-		pin.ImageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(data.Images.Size236x.URL))
+		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Size236x.URL))
 	}
 
 	return pin
 }
 
-func fetchRelatedPins(pinID string, csrftoken string, baseURL string, bookmark string) ([]Pin, string) {
+func fetchRelatedPins(pinID string, csrftoken string, bookmark string) ([]Pin, string) {
 	apiURL := "https://www.pinterest.com/resource/RelatedModulesResource/get/"
 	sourceURL := fmt.Sprintf("/pin/%s/", pinID)
 	options := map[string]interface{}{
@@ -585,15 +558,15 @@ func fetchRelatedPins(pinID string, csrftoken string, baseURL string, bookmark s
 
 		var imageURL string
 		if result.Images.Orig.URL != "" {
-			imageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(result.Images.Orig.URL))
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Orig.URL))
 		} else if result.Images.Size736x.URL != "" {
-			imageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(result.Images.Size736x.URL))
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size736x.URL))
 		} else if result.Images.Size564x.URL != "" {
-			imageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(result.Images.Size564x.URL))
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size564x.URL))
 		} else if result.Images.Size474x.URL != "" {
-			imageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(result.Images.Size474x.URL))
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size474x.URL))
 		} else if result.Images.Size236x.URL != "" {
-			imageURL = fmt.Sprintf("%s/image?url=%s", baseURL, url.QueryEscape(result.Images.Size236x.URL))
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size236x.URL))
 		}
 
 		if imageURL != "" {
