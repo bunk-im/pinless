@@ -7,7 +7,7 @@ A Privacy-Focused Pinterest Frontend.
 - No hassle
 
 ## Instances
-See https://instances.bunk.im or [instances.md](./instances.md)
+See https://instances.bunk.im or [INSTANCES.md](./INSTANCES.md)
 
 ## How to deploy
 1. Install docker
