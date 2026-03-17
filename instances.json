@@ -3,7 +3,7 @@
         {
             "url": "https://pinterest.bunk.im",
             "regions": ["The Netherlands"],
-            "operators": ["https://bunk.im"]
+            "cloudflare": false
         }
     ],
     "onion": [],
