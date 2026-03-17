@@ -14,8 +14,7 @@
     "onion": [
         {
             "url": "http://pinvnrvjzyxdglrfcf75bhqyftmr3c4gvt6lwhe6khwv2zy2yo4htlqd.onion",
-            "regions": ["Poland"],
-            "cloudflare": false
+            "regions": ["Poland"]
         }
     ],
     "i2p": []
