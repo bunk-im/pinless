@@ -400,9 +400,9 @@ func fetchPinDetails(pinID string, csrftoken string) Pin {
 
 	pin := Pin{
 		ID:          pinID,
-		Title:       data.Title,
-		Description: data.Description,
-		PinnerName:  data.Pinner.FullName,
+		Title:       strings.TrimSpace(data.Title),
+		Description: strings.TrimSpace(data.Description),
+		PinnerName:  strings.TrimSpace(data.Pinner.FullName),
 	}
 
 	if data.Images.Orig.URL != "" {
@@ -573,8 +573,8 @@ func fetchRelatedPins(pinID string, csrftoken string, bookmark string) ([]Pin, s
 			related = append(related, Pin{
 				ID:         result.ID,
 				ImageURL:   imageURL,
-				Title:      title,
-				PinnerName: result.Pinner.FullName,
+				Title:      strings.TrimSpace(title),
+				PinnerName: strings.TrimSpace(result.Pinner.FullName),
 			})
 		}
 	}

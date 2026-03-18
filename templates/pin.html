@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ .Pin.Title }} - Pinless</title>
+    <title>{{ if ne .Pin.Title "" }}{{ .Pin.Title }} - Pinless{{ else if ne .Pin.Description "" }}{{ if gt (len .Pin.Description) 50 }}{{ slice .Pin.Description 0 50 }}... - Pinless{{ else }}{{ .Pin.Description }} - Pinless{{ end }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }} - Pinless{{ else }}Pinless{{ end }}</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%221em%22 font-size=%2280%22>📌</text></svg>">
     <style>
         body {
@@ -193,7 +193,7 @@
         {{end}}
         <div class="pin-container">
         {{if .Pin.ImageURL}}
-        <img src="{{ .Pin.ImageURL }}" alt="{{ .Pin.Title }}" />
+        <img src="{{ .Pin.ImageURL }}" alt="{{ if .Pin.Title }}{{ .Pin.Title }}{{ else if .Pin.Description }}{{ .Pin.Description }}{{ else if .Pin.PinnerName }}Pin by {{ .Pin.PinnerName }}{{ else }}Pin image{{ end }}" />
         {{end}}
         <div class="pin-info">
             {{if .Pin.Title}}
@@ -216,7 +216,7 @@
             {{range .Related}}
             <div>
                 <a href="/pin/{{.ID}}?q={{ $.Query | urlquery }}&from={{ $.Pin.ID }}">
-                    <img src="{{.ImageURL}}" alt="{{.Title}}" title="{{.Title}}" />
+                    <img src="{{.ImageURL}}" alt="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" title="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" />
                 </a>
             </div>
             {{end}}
