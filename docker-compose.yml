@@ -1,7 +1,7 @@
 services:
   pinless:
     container_name: pinless
-    build:
-      context: .
+    image: ghcr.io/bunk-im/pinless:latest
+    pull_policy: always
     ports:
       - "3000:3000"
