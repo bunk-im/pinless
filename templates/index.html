@@ -66,8 +66,9 @@
         button[type="submit"] {
             all: unset;
             position: absolute;
-            right: 20px;
-            top: 5px;
+            right: 24px;
+            top: 50%;
+            transform: translateY(-50%);
             height: 30px;
             width: 30px;
             color: #e60023;
@@ -75,6 +76,9 @@
             cursor: pointer;
             z-index: 10;
             border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .links {
