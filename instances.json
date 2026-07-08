@@ -9,12 +9,21 @@
             "url": "https://pinterest.fsky.io",
             "regions": ["Poland"],
             "cloudflare": false
+        },
+        {
+            "url": "https://pinless.nadeko.net",
+            "regions": ["Chile"],
+            "cloudflare": false
         }
     ],
     "onion": [
         {
             "url": "http://pinvnrvjzyxdglrfcf75bhqyftmr3c4gvt6lwhe6khwv2zy2yo4htlqd.onion",
             "regions": ["Poland"]
+        },
+        {
+            "url": "http://pinless.nadekonw7plitnjuawu6ytjsl7jlglk2t6pyq6eftptmiv3dvqndwvyd.onion",
+            "regions": ["Chile"]
         }
     ],
     "i2p": []
