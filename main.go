@@ -49,6 +49,12 @@ func main() {
 
 	router := gin.Default()
 
+	router.Use(func(c *gin.Context) {
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'")
+		c.Next()
+	})
+
 	// Serve embedded static files
 	staticSubFS, _ := fs.Sub(staticFS, "static")
 	router.StaticFS("/static", http.FS(staticSubFS))
