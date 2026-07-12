@@ -614,8 +614,18 @@ func isAllowedDomain(urlStr string) bool {
 	return false
 }
 
+var safeClient = &http.Client{
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if !isAllowedDomain(req.URL.String()) {
+			return fmt.Errorf("redirect to disallowed domain: %s", req.URL.Host)
+		}
+		return nil
+	},
+	Timeout: 10 * time.Second,
+}
+
 func fetchImage(imageUrl string) ([]byte, error) {
-	resp, err := http.Get(imageUrl)
+	resp, err := safeClient.Get(imageUrl)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch image")
 	}
