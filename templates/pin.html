@@ -5,6 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ if ne .Pin.Title "" }}{{ .Pin.Title }} - Pinless{{ else if ne .Pin.Description "" }}{{ if gt (len .Pin.Description) 50 }}{{ slice .Pin.Description 0 50 }}... - Pinless{{ else }}{{ .Pin.Description }} - Pinless{{ end }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }} - Pinless{{ else }}Pinless{{ end }}</title>
+    <meta property="og:title" content="{{ if ne .Pin.Title "" }}{{ .Pin.Title }}{{ else if ne .Pin.Description "" }}{{ .Pin.Description }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }}{{ else }}Pinless{{ end }}">
+    <meta property="og:description" content="{{ if ne .Pin.Description "" }}{{ .Pin.Description }}{{ else if ne .Pin.Title "" }}{{ .Pin.Title }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }}{{ else }}A pin on Pinless{{ end }}">
+    {{ if .OGImage }}<meta property="og:image" content="{{ .OGImage }}">{{ end }}
+    <meta property="og:url" content="{{ .PageURL }}">
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="Pinless">
+    <meta name="twitter:card" content="summary_large_image">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%221em%22 font-size=%2280%22>📌</text></svg>">
     <style>
         body {

@@ -42,6 +42,14 @@ type PinData struct {
 
 var allowedDomains = []string{"pinimg.com", "i.pinimg.com", "pinterest.com"}
 
+func absURL(c *gin.Context, path string) string {
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, c.Request.Host, path)
+}
+
 func main() {
 	gin.SetMode(gin.ReleaseMode)
 	gin.DefaultWriter = io.Discard
@@ -313,12 +321,19 @@ func pinHandler(c *gin.Context) {
 		c.SetCookie("bookmark", "", -1, "/", "", c.Request.TLS != nil, true)
 	}
 
+	ogImage := ""
+	if pin.ImageURL != "" {
+		ogImage = absURL(c, pin.ImageURL)
+	}
+
 	c.HTML(http.StatusOK, "pin.html", gin.H{
 		"Pin":             pin,
 		"Related":         related,
 		"RelatedBookmark": nextBookmark,
 		"Query":           query,
 		"From":            from,
+		"PageURL":         absURL(c, c.Request.URL.RequestURI()),
+		"OGImage":         ogImage,
 	})
 }
 
