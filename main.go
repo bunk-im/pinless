@@ -52,6 +52,7 @@ func main() {
 	router.Use(func(c *gin.Context) {
 		c.Header("Referrer-Policy", "no-referrer")
 		c.Header("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'self'; frame-ancestors 'none'")
+		c.SetSameSite(http.SameSiteStrictMode)
 		c.Next()
 	})
 
@@ -95,7 +96,7 @@ func searchHandler(c *gin.Context) {
 
 	// clear bookmark if new search
 	if _, nextExists := c.GetQuery("next"); !nextExists {
-		c.SetCookie("bookmark", "", -1, "/", "", false, true)
+		c.SetCookie("bookmark", "", -1, "/", "", c.Request.TLS != nil, true)
 		bookmark = ""
 	}
 
@@ -162,7 +163,7 @@ func searchHandler(c *gin.Context) {
 		for _, ck := range newToken {
 			if ck != nil && ck.Name == "csrftoken" && ck.Value != "" {
 				csrftoken = ck.Value
-				c.SetCookie("csrftoken", csrftoken, 0, "/", "", false, true)
+				c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
 				break
 			}
 		}
@@ -252,10 +253,10 @@ func searchHandler(c *gin.Context) {
 
 	// store bookmark for pagination
 	if responseData.ResourceResponse.Bookmark != "" {
-		c.SetCookie("bookmark", responseData.ResourceResponse.Bookmark, 0, "/", "", false, true)
+		c.SetCookie("bookmark", responseData.ResourceResponse.Bookmark, 0, "/", "", c.Request.TLS != nil, true)
 	} else {
 		// clear cookie when no pages
-		c.SetCookie("bookmark", "", -1, "/", "", false, true)
+		c.SetCookie("bookmark", "", -1, "/", "", c.Request.TLS != nil, true)
 	}
 
 	type ResultItem struct {
@@ -293,7 +294,7 @@ func pinHandler(c *gin.Context) {
 	}
 
 	if _, nextExists := c.GetQuery("next"); !nextExists {
-		c.SetCookie("bookmark", "", -1, "/", "", false, true)
+		c.SetCookie("bookmark", "", -1, "/", "", c.Request.TLS != nil, true)
 		bookmark = ""
 	}
 
@@ -307,9 +308,9 @@ func pinHandler(c *gin.Context) {
 	related, nextBookmark := fetchRelatedPins(pinID, csrftoken, bookmark)
 
 	if nextBookmark != "" {
-		c.SetCookie("bookmark", nextBookmark, 0, "/", "", false, true)
+		c.SetCookie("bookmark", nextBookmark, 0, "/", "", c.Request.TLS != nil, true)
 	} else {
-		c.SetCookie("bookmark", "", -1, "/", "", false, true)
+		c.SetCookie("bookmark", "", -1, "/", "", c.Request.TLS != nil, true)
 	}
 
 	c.HTML(http.StatusOK, "pin.html", gin.H{
