@@ -97,7 +97,7 @@
             align-items: center;
             width: 100%;
             max-width: 600px;
-            margin-bottom: 40px;
+            margin-bottom: 30px;
             text-align: center;
         }
 
@@ -149,15 +149,29 @@
             font-size: 1.1rem;
         }
 
-        .boards-section {
-            width: 100%;
-            max-width: 1000px;
+        .tabs {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 24px;
         }
 
-        .boards-title {
-            font-size: 1.3rem;
-            margin-bottom: 20px;
-            padding-left: 10px;
+        .tabs a {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            color: #888;
+            border: 1px solid #333;
+        }
+
+        .tabs a.active {
+            color: #fff;
+            background: #333;
+            border-color: #555;
+        }
+
+        .boards-section {
+            width: 90%;
+            margin: 0 auto;
         }
 
         .boards-grid {
@@ -165,7 +179,6 @@
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 1.5rem;
             width: 100%;
-            max-width: 100%;
             box-sizing: border-box;
             margin: 0 auto;
             overflow: hidden;
@@ -207,6 +220,44 @@
                 grid-template-columns: repeat(2, 1fr);
                 gap: 0.5rem;
             }
+            .boards-section {
+                width: 100%;
+            }
+        }
+
+        .pins-grid {
+            columns: 5 200px;
+            column-gap: 1.5rem;
+            width: 90%;
+            margin: 0 auto;
+        }
+
+        .pins-grid div {
+            width: 150px;
+            margin: 0 1.5rem 1.5rem 0;
+            display: inline-block;
+            width: 100%;
+            padding: 5px;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .pins-grid div img {
+            width: 100%;
+            border-radius: 16px;
+            display: block;
+        }
+
+        @media (max-width: 600px) {
+            .pins-grid {
+                columns: 2;
+                width: 100%;
+                column-gap: 0.5rem;
+            }
+            .pins-grid div {
+                margin: 0 0 0.5rem 0;
+                padding: 2px;
+            }
         }
 
         .pagination-container {
@@ -218,14 +269,6 @@
         }
         .pagination-container a:hover {
             text-decoration: underline;
-        }
-
-        .section-link {
-            color: #888;
-            text-decoration: none;
-            font-size: 2rem;
-            padding: 10px;
-            align-self: flex-start;
         }
     </style>
 </head>
@@ -256,8 +299,13 @@
         </div>
     </div>
 
+    <div class="tabs">
+        <a href="/{{ .Profile.Username }}/_created/"{{ if .Pins }} class="active"{{ end }}>Created</a>
+        <a href="/{{ .Profile.Username }}/_saved/"{{ if .Boards }} class="active"{{ end }}>Saved</a>
+    </div>
+
+    {{ if .Boards }}
     <div class="boards-section">
-        {{ if .Boards }}
         <div class="boards-grid">
             {{ range .Boards }}
             <a href="{{ .URL }}">
@@ -276,10 +324,25 @@
             <h2><a href="/{{ .Profile.Username }}/?next">Next page</a></h2>
         </div>
         {{ end }}
-        {{ else }}
-        <div style="text-align: center; color: #888; padding: 40px;">No boards found</div>
+    </div>
+    {{ else if .Pins }}
+    <div class="pins-grid">
+        {{ range .Pins }}
+        <div>
+            <a href="/pin/{{.ID}}">
+                <img src="{{.ImageURL}}" alt="Pin image" />
+            </a>
+        </div>
         {{ end }}
     </div>
+    {{ if .Bookmark }}
+    <div class="pagination-container">
+        <h2><a href="/{{ $.Profile.Username }}/_created/?next">Next page</a></h2>
+    </div>
+    {{ end }}
+    {{ else }}
+    <div style="text-align: center; color: #888; padding: 40px;">No content found</div>
+    {{ end }}
 </body>
 
 </html>
