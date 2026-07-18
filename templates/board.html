@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Board.Name }} - {{ .Board.OwnerName }} - Pinless</title>
+    <meta property="og:title" content="{{ .Board.Name }}">
+    <meta property="og:description" content="{{ .Board.Name }} by {{ .Board.OwnerName }} on Pinless">
+    {{ if .OGImage }}<meta property="og:image" content="{{ .OGImage }}">{{ end }}
+    <meta property="og:url" content="{{ .PageURL }}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Pinless">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%221em%22 font-size=%2280%22>📌</text></svg>">
+    <style>
+        body {
+            background: #121212;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            font-family: sans-serif;
+            scrollbar-color: gray #121212;
+            margin: 0;
+            padding: 20px;
+        }
+
+        input#search {
+            all: unset;
+            background: #222;
+            color: #fff;
+            padding: 0.7rem 1rem;
+            border-radius: 24px;
+            width: 100%;
+        }
+
+        input#search:-webkit-autofill,
+        input#search:-webkit-autofill:hover,
+        input#search:-webkit-autofill:focus,
+        input#search:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0 30px #222 inset !important;
+            -webkit-text-fill-color: #fff !important;
+        }
+
+        .search-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 100vw;
+            gap: 1rem;
+            width: 90%;
+            margin: 0 auto;
+            margin-bottom: 20px;
+        }
+
+        .search {
+            max-width: 500px;
+            width: 100%;
+            position: relative;
+            display: flex;
+        }
+
+        button[type="submit"] {
+            all: unset;
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 30px;
+            width: 30px;
+            color: #e60023;
+            background-color: #222;
+            cursor: pointer;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .logo-full { display: inline; }
+        .logo-short { display: none; }
+        @media (max-width: 600px) {
+            .logo-full { display: none; }
+            .logo-short { display: inline; }
+        }
+
+        .board-header {
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .board-name {
+            font-size: 1.6rem;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .board-owner {
+            font-size: 0.95rem;
+            color: #888;
+        }
+
+        .board-owner a {
+            color: #e60023;
+        }
+
+        .board-count {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-top: 4px;
+        }
+
+        .grid-container {
+            columns: 5 200px;
+            column-gap: 1.5rem;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        .grid-container div {
+            margin: 0 1.5rem 1.5rem 0;
+            display: inline-block;
+            width: 100%;
+            padding: 5px;
+            border-radius: 16px;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .grid-container div img {
+            width: 100%;
+            border-radius: 16px;
+            display: block;
+        }
+
+        @media (max-width: 600px) {
+            .grid-container {
+                columns: 2;
+                width: 100%;
+                column-gap: 0.5rem;
+            }
+            .grid-container div {
+                margin: 0 0 0.5rem 0;
+                padding: 2px;
+            }
+        }
+
+        .pagination-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .pagination-container a {
+            color: #fff;
+        }
+        .pagination-container a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="search-container">
+        <h1><a href="/"><span class="logo-short">P</span><span class="logo-full">Pinless</span></a></h1>
+        <form action="/search/pins/" method="GET" class="search">
+            <input id="search" type="text" name="q" placeholder="Search for the cute cats, memes, etc." required />
+            <button type="submit"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="lucide lucide-search">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                </svg></button>
+        </form>
+    </div>
+
+    <div class="board-header">
+        <div class="board-name">{{ .Board.Name }}</div>
+        <div class="board-owner">by <a href="/{{ .Board.OwnerUser }}/">{{ .Board.OwnerName }}</a></div>
+        <div class="board-count">{{ .Board.PinCount }} Pins</div>
+    </div>
+
+    {{ if .Pins }}
+    <div class="grid-container">
+        {{ range .Pins }}
+        <div>
+            <a href="/pin/{{.ID}}">
+                <img src="{{.ImageURL}}" alt="Pin image" />
+            </a>
+        </div>
+        {{ end }}
+    </div>
+    {{ if .Bookmark }}
+    <div class="pagination-container">
+        <h2><a href="{{ $.Board.URL }}?next">Next page</a></h2>
+    </div>
+    {{ end }}
+    {{ else }}
+    <div style="text-align: center; color: #888; padding: 40px;">No pins found in this board</div>
+    {{ end }}
+</body>
+
+</html>

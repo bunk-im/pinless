@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .Profile.FullName }} (@{{ .Profile.Username }}) - Pinless</title>
+    <meta property="og:title" content="{{ .Profile.FullName }} (@{{ .Profile.Username }})">
+    <meta property="og:description" content="{{ if ne .Profile.About "" }}{{ .Profile.About }}{{ else }}{{ .Profile.FullName }}'s profile on Pinless{{ end }}">
+    {{ if .OGImage }}<meta property="og:image" content="{{ .OGImage }}">{{ end }}
+    <meta property="og:url" content="{{ .PageURL }}">
+    <meta property="og:type" content="profile">
+    <meta property="og:site_name" content="Pinless">
+    <meta name="twitter:card" content="summary">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%221em%22 font-size=%2280%22>📌</text></svg>">
+    <style>
+        body {
+            background: #121212;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            font-family: sans-serif;
+            scrollbar-color: gray #121212;
+            margin: 0;
+            padding: 20px;
+        }
+
+        input#search {
+            all: unset;
+            background: #222;
+            color: #fff;
+            padding: 0.7rem 1rem;
+            border-radius: 24px;
+            width: 100%;
+        }
+
+        input#search:-webkit-autofill,
+        input#search:-webkit-autofill:hover,
+        input#search:-webkit-autofill:focus,
+        input#search:-webkit-autofill:active {
+            -webkit-box-shadow: 0 0 0 30px #222 inset !important;
+            -webkit-text-fill-color: #fff !important;
+        }
+
+        .search-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 100vw;
+            gap: 1rem;
+            width: 90%;
+            margin: 0 auto;
+            margin-bottom: 20px;
+        }
+
+        .search {
+            max-width: 500px;
+            width: 100%;
+            position: relative;
+            display: flex;
+        }
+
+        button[type="submit"] {
+            all: unset;
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 30px;
+            width: 30px;
+            color: #e60023;
+            background-color: #222;
+            cursor: pointer;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .logo-full { display: inline; }
+        .logo-short { display: none; }
+        @media (max-width: 600px) {
+            .logo-full { display: none; }
+            .logo-short { display: inline; }
+        }
+
+        .profile-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .profile-avatar {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin-bottom: 16px;
+            background: #333;
+        }
+
+        .profile-name {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .profile-username {
+            font-size: 1rem;
+            color: #888;
+            margin-bottom: 12px;
+        }
+
+        .profile-about {
+            color: #ccc;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            margin-bottom: 16px;
+            white-space: pre-wrap;
+        }
+
+        .profile-stats {
+            display: flex;
+            gap: 24px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .profile-stats span {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .profile-stats .num {
+            font-weight: bold;
+            color: #fff;
+            font-size: 1.1rem;
+        }
+
+        .boards-section {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .boards-title {
+            font-size: 1.3rem;
+            margin-bottom: 20px;
+            padding-left: 10px;
+        }
+
+        .boards-grid {
+            columns: 4 200px;
+            column-gap: 1.5rem;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        .boards-grid .board-card {
+            display: inline-block;
+            width: 100%;
+            margin: 0 0 1.5rem 0;
+            padding: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #1e1e1e;
+            break-inside: avoid;
+        }
+
+        .boards-grid .board-card img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            display: block;
+        }
+
+        .board-card-info {
+            padding: 10px 12px 12px;
+        }
+
+        .board-card-name {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .board-card-count {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        @media (max-width: 600px) {
+            .boards-grid {
+                columns: 2;
+                column-gap: 0.5rem;
+            }
+            .boards-grid .board-card {
+                margin: 0 0 0.5rem 0;
+            }
+        }
+
+        .pagination-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .pagination-container a {
+            color: #fff;
+        }
+        .pagination-container a:hover {
+            text-decoration: underline;
+        }
+
+        .section-link {
+            color: #888;
+            text-decoration: none;
+            font-size: 2rem;
+            padding: 10px;
+            align-self: flex-start;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="search-container">
+        <h1><a href="/"><span class="logo-short">P</span><span class="logo-full">Pinless</span></a></h1>
+        <form action="/search/pins/" method="GET" class="search">
+            <input id="search" type="text" name="q" placeholder="Search for the cute cats, memes, etc." required />
+            <button type="submit"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="lucide lucide-search">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                </svg></button>
+        </form>
+    </div>
+
+    <div class="profile-header">
+        {{ if .Profile.ImageURL }}<img class="profile-avatar" src="{{ .Profile.ImageURL }}" alt="{{ .Profile.FullName }}" />{{ else }}<div class="profile-avatar" style="background:#333;"></div>{{ end }}
+        <div class="profile-name">{{ .Profile.FullName }}</div>
+        <div class="profile-username">@{{ .Profile.Username }}</div>
+        {{ if ne .Profile.About "" }}<div class="profile-about">{{ .Profile.About }}</div>{{ end }}
+        <div class="profile-stats">
+            <span><span class="num">{{ .Profile.PinCount }}</span> Pins</span>
+            <span><span class="num">{{ .Profile.BoardCount }}</span> Boards</span>
+            <span><span class="num">{{ .Profile.FollowerCount }}</span> Followers</span>
+        </div>
+    </div>
+
+    <div class="boards-section">
+        {{ if .Boards }}
+        <div class="boards-grid">
+            {{ range .Boards }}
+            <a href="{{ .URL }}">
+                <div class="board-card">
+                    {{ if .ImageURL }}<img src="{{ .ImageURL }}" alt="{{ .Name }}" />{{ else }}<div style="background:#222; aspect-ratio:1;"></div>{{ end }}
+                    <div class="board-card-info">
+                        <div class="board-card-name">{{ .Name }}</div>
+                        <div class="board-card-count">{{ .PinCount }} Pins</div>
+                    </div>
+                </div>
+            </a>
+            {{ end }}
+        </div>
+        {{ if .Bookmark }}
+        <div class="pagination-container">
+            <h2><a href="/{{ .Profile.Username }}/?next">Next page</a></h2>
+        </div>
+        {{ end }}
+        {{ else }}
+        <div style="text-align: center; color: #888; padding: 40px;">No boards found</div>
+        {{ end }}
+    </div>
+</body>
+
+</html>

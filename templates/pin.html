@@ -223,7 +223,7 @@
             <div class="pin-description">{{ .Pin.Description }}</div>
             {{end}}
             {{if .Pin.PinnerName}}
-            <div class="pin-pinner">Pinned by {{ .Pin.PinnerName }}</div>
+            <div class="pin-pinner">Pinned by {{ if .Pin.PinnerUser }}<a href="/{{ .Pin.PinnerUser }}/" style="color: #e60023; text-decoration: none;">{{ .Pin.PinnerName }}</a>{{ else }}{{ .Pin.PinnerName }}{{ end }}</div>
             {{end}}
         </div>
     </div>
