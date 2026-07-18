@@ -268,7 +268,14 @@
             color: #fff;
         }
         .pagination-container a:hover {
-            text-decoration: underline;
+            text-decoration: none;
+        }
+
+        hr.divider {
+            border: none;
+            border-top: 1px solid #333;
+            width: 90%;
+            margin: 30px auto;
         }
     </style>
 </head>
@@ -325,6 +332,23 @@
         </div>
         {{ end }}
     </div>
+    {{ if .ProfilePins }}
+    <hr class="divider">
+    <div class="pins-grid">
+        {{ range .ProfilePins }}
+        <div>
+            <a href="/pin/{{.ID}}">
+                <img src="{{.ImageURL}}" alt="Pin image" />
+            </a>
+        </div>
+        {{ end }}
+    </div>
+    {{ if .PinsBookmark }}
+    <div class="pagination-container">
+        <h2><a href="/{{ $.Profile.Username }}/_saved/?pins_next">Next page</a></h2>
+    </div>
+    {{ end }}
+    {{ end }}
     {{ else if .Pins }}
     <div class="pins-grid">
         {{ range .Pins }}
@@ -341,7 +365,24 @@
     </div>
     {{ end }}
     {{ else }}
+    {{ if .ProfilePins }}
+    <div class="pins-grid">
+        {{ range .ProfilePins }}
+        <div>
+            <a href="/pin/{{.ID}}">
+                <img src="{{.ImageURL}}" alt="Pin image" />
+            </a>
+        </div>
+        {{ end }}
+    </div>
+    {{ if .PinsBookmark }}
+    <div class="pagination-container">
+        <h2><a href="/{{ $.Profile.Username }}/_saved/?pins_next">Next page</a></h2>
+    </div>
+    {{ end }}
+    {{ else }}
     <div style="text-align: center; color: #888; padding: 40px;">No content found</div>
+    {{ end }}
     {{ end }}
 </body>
 

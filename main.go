@@ -676,6 +676,15 @@ func savedHandler(c *gin.Context) {
 		bookmark = ""
 	}
 
+	pinsBookmark := ""
+	if cookie, err := c.Cookie("pins_bookmark"); err == nil && cookie != "" {
+		pinsBookmark = cookie
+	}
+	if _, nextExists := c.GetQuery("pins_next"); !nextExists {
+		c.SetCookie("pins_bookmark", "", -1, "/", "", c.Request.TLS != nil, true)
+		pinsBookmark = ""
+	}
+
 	profile, profileToken := fetchUserProfile(username, csrftoken)
 	if profileToken != "" {
 		csrftoken = profileToken
@@ -694,17 +703,27 @@ func savedHandler(c *gin.Context) {
 		c.SetCookie("bookmark", "", -1, "/", "", c.Request.TLS != nil, true)
 	}
 
+	profilePins, pinsNextBookmark := fetchUserProfilePins(username, csrftoken, pinsBookmark)
+
+	if pinsNextBookmark != "" {
+		c.SetCookie("pins_bookmark", pinsNextBookmark, 0, "/", "", c.Request.TLS != nil, true)
+	} else {
+		c.SetCookie("pins_bookmark", "", -1, "/", "", c.Request.TLS != nil, true)
+	}
+
 	ogImage := ""
 	if profile.ImageURL != "" {
 		ogImage = absURL(c, profile.ImageURL)
 	}
 
 	c.HTML(http.StatusOK, "profile.html", gin.H{
-		"Profile":    profile,
-		"Boards":     boards,
-		"Bookmark":   nextBookmark,
-		"PageURL":    absURL(c, c.Request.URL.RequestURI()),
-		"OGImage":    ogImage,
+		"Profile":     profile,
+		"Boards":      boards,
+		"ProfilePins": profilePins,
+		"Bookmark":    nextBookmark,
+		"PinsBookmark": pinsNextBookmark,
+		"PageURL":     absURL(c, c.Request.URL.RequestURI()),
+		"OGImage":     ogImage,
 	})
 }
 
@@ -1072,6 +1091,139 @@ func fetchUserCreatedPins(userID string, username string, csrftoken string, book
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("x-pinterest-source-url", sourceURL)
 	req.Header.Set("x-pinterest-pws-handler", fmt.Sprintf("www/%s/_created.js", username))
+	req.Header.Set("Referer", "https://www.pinterest.com/")
+
+	if csrftoken != "" {
+		req.Header.Set("x-csrftoken", csrftoken)
+		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
+	}
+
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, ""
+	}
+	defer resp.Body.Close()
+
+	var reader io.Reader = resp.Body
+	contentEncoding := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	if strings.Contains(contentEncoding, "gzip") {
+		gzr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, ""
+		}
+		defer gzr.Close()
+		reader = gzr
+	}
+
+	bodyBytes, _ := io.ReadAll(reader)
+
+	var responseData struct {
+		ResourceResponse struct {
+			Data []struct {
+				ID     string `json:"id"`
+				Type   string `json:"type"`
+				Images struct {
+					Orig struct {
+						URL string `json:"url"`
+					} `json:"orig"`
+					Size736x struct {
+						URL string `json:"url"`
+					} `json:"736x"`
+					Size474x struct {
+						URL string `json:"url"`
+					} `json:"474x"`
+					Size564x struct {
+						URL string `json:"url"`
+					} `json:"564x"`
+					Size236x struct {
+						URL string `json:"url"`
+					} `json:"236x"`
+				} `json:"images"`
+				Pinner struct {
+					FullName string `json:"full_name"`
+					Username string `json:"username"`
+				} `json:"pinner"`
+			} `json:"data"`
+			Bookmark string `json:"bookmark,omitempty"`
+		} `json:"resource_response"`
+	}
+
+	if err := json.Unmarshal(bodyBytes, &responseData); err != nil {
+		return nil, ""
+	}
+
+	var pins []Pin
+	for _, result := range responseData.ResourceResponse.Data {
+		if result.Type != "pin" || result.ID == "" {
+			continue
+		}
+
+		var imageURL string
+		if result.Images.Orig.URL != "" {
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Orig.URL))
+		} else if result.Images.Size736x.URL != "" {
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size736x.URL))
+		} else if result.Images.Size564x.URL != "" {
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size564x.URL))
+		} else if result.Images.Size474x.URL != "" {
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size474x.URL))
+		} else if result.Images.Size236x.URL != "" {
+			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size236x.URL))
+		}
+
+		if imageURL != "" {
+			pins = append(pins, Pin{
+				ID:         result.ID,
+				ImageURL:   imageURL,
+				PinnerName: strings.TrimSpace(result.Pinner.FullName),
+			})
+		}
+	}
+
+	return pins, responseData.ResourceResponse.Bookmark
+}
+
+func fetchUserProfilePins(username string, csrftoken string, bookmark string) ([]Pin, string) {
+	apiURL := "https://www.pinterest.com/resource/UserPinsResource/get/"
+	sourceURL := fmt.Sprintf("/%s/", username)
+	options := map[string]interface{}{
+		"add_vase":            true,
+		"field_set_key":       "mobile_grid_item",
+		"is_own_profile_pins": false,
+		"username":            username,
+	}
+	if bookmark != "" {
+		options["bookmarks"] = []string{bookmark}
+	}
+	dataParamObj := map[string]interface{}{
+		"options": options,
+		"context": map[string]interface{}{},
+	}
+	dataParam, _ := json.Marshal(dataParamObj)
+	dataParamEscaped := url.QueryEscape(string(dataParam))
+	sourceURLEscaped := url.QueryEscape(sourceURL)
+
+	finalURL := fmt.Sprintf("%s?source_url=%s&data=%s&_=%d", apiURL, sourceURLEscaped, dataParamEscaped, time.Now().UnixMilli())
+
+	method := http.MethodGet
+	var body io.Reader
+	if bookmark != "" {
+		method = http.MethodPost
+		finalURL = apiURL
+		body = strings.NewReader("data=" + dataParamEscaped)
+	}
+
+	req, _ := http.NewRequest(method, finalURL, body)
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	req.Header.Set("Accept", "application/json, text/javascript, */*, q=0.01")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("x-pinterest-source-url", sourceURL)
+	req.Header.Set("x-pinterest-pws-handler", fmt.Sprintf("www/%s.js", username))
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
 	if csrftoken != "" {
