@@ -15,6 +15,11 @@
             "regions": ["Chile"],
             "cloudflare": false
         }
+        {
+            "url": "https://pinless.pussthecat.org",
+            "regions": ["Germany"],
+            "cloudflare": false
+        }
     ],
     "onion": [
         {
