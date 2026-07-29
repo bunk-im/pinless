@@ -15,8 +15,10 @@ See https://instances.bunk.im or [INSTANCES.md](./INSTANCES.md)
 3. Run `docker compose up -d` to build and run the container as a daemon
 
 ## Showcase
-![Homepage](https://files.bunk.im/raw/KRfSUF.png)
+![1](https://files.bunk.im/raw/111.png)
 ---
-![Search](https://files.bunk.im/raw/MGU7YJ.jpg)
+![2](https://files.bunk.im/raw/222.png)
 ---
-![Pin](https://files.bunk.im/raw/zAXXLz.png)
+![3](https://files.bunk.im/raw/333.png)
+---
+![4](https://files.bunk.im/raw/444.png)
