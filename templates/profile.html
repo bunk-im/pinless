@@ -317,7 +317,7 @@
             {{ range .Boards }}
             <a href="{{ .URL }}">
                 <div class="board-card">
-                    {{ if .ImageURL }}<img src="{{ .ImageURL }}" alt="{{ .Name }}" />{{ else }}<div style="background:#222; aspect-ratio:1;"></div>{{ end }}
+                    {{ if .ImageURL }}<img src="{{ .ImageURL }}" alt="{{ .Name }}" width="{{.ImageWidth}}" height="{{.ImageHeight}}" />{{ else }}<div style="background:#222; aspect-ratio:1;"></div>{{ end }}
                     <div class="board-card-info">
                         <div class="board-card-name">{{ .Name }}</div>
                         <div class="board-card-count">{{ .PinCount }} Pins</div>

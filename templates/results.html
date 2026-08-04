@@ -43,8 +43,10 @@
 
         .grid-container div img {
             width: 100%;
+            height: auto;
             border-radius: 16px;
             display: block;
+            object-fit: contain;
         }
 
         input#search {
@@ -153,7 +155,7 @@
         {{range .Results}}
         <div>
             <a href="/pin/{{.ID}}?q={{ $.Query | urlquery }}">
-                <img src="{{.Image}}" alt="Image" />
+                <img src="{{.Image}}" width="{{.ImageWidth}}" height="{{.ImageHeight}}" alt="Image" />
             </a>
         </div>
         {{end}}

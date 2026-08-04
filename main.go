@@ -29,6 +29,8 @@ type SearchResult struct {
 
 type Pin struct {
 	ID          string `json:"id"`
+	ImageWidth  int    `json:"width"`
+	ImageHeight int    `json:"height"`
 	ImageURL    string `json:"image_url"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
@@ -73,6 +75,35 @@ func absURL(c *gin.Context, path string) string {
 		scheme = "https"
 	}
 	return fmt.Sprintf("%s://%s%s", scheme, c.Request.Host, path)
+}
+
+type PinterestImage struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+type PinterestImages struct {
+	Orig     PinterestImage `json:"orig"`
+	Size736x PinterestImage `json:"736x"`
+	Size474x PinterestImage `json:"474x"`
+	Size564x PinterestImage `json:"564x"`
+	Size236x PinterestImage `json:"236x"`
+}
+
+func extractBestImageInfo(pi PinterestImages) *PinterestImage {
+	if pi.Orig.URL != "" {
+		return &pi.Orig
+	} else if pi.Size736x.URL != "" {
+		return &pi.Size736x
+	} else if pi.Size564x.URL != "" {
+		return &pi.Size564x
+	} else if pi.Size474x.URL != "" {
+		return &pi.Size474x
+	} else if pi.Size236x.URL != "" {
+		return &pi.Size236x
+	}
+	return nil
 }
 
 func main() {
@@ -262,12 +293,8 @@ func searchHandler(c *gin.Context) {
 		ResourceResponse struct {
 			Data struct {
 				Results []struct {
-					ID     string `json:"id"`
-					Images struct {
-						Orig struct {
-							URL string `json:"url"`
-						} `json:"orig"`
-					} `json:"images"`
+					ID     string          `json:"id"`
+					Images PinterestImages `json:"images"`
 				} `json:"results"`
 			} `json:"data"`
 			Bookmark string `json:"bookmark,omitempty"`
@@ -303,8 +330,10 @@ func searchHandler(c *gin.Context) {
 	}
 
 	type ResultItem struct {
-		ID    string
-		Image string
+		ID          string
+		Image       string
+		ImageWidth  int
+		ImageHeight int
 	}
 
 	var results []ResultItem
@@ -313,8 +342,10 @@ func searchHandler(c *gin.Context) {
 		if imageUrl != "" && isAllowedDomain(imageUrl) {
 			proxyImageUrl := fmt.Sprintf("/image?url=%s", url.QueryEscape(imageUrl))
 			results = append(results, ResultItem{
-				ID:    result.ID,
-				Image: proxyImageUrl,
+				ID:          result.ID,
+				Image:       proxyImageUrl,
+				ImageWidth:  result.Images.Orig.Width,
+				ImageHeight: result.Images.Orig.Height,
 			})
 		}
 	}
@@ -427,26 +458,10 @@ func fetchPinDetails(pinID string, csrftoken string) Pin {
 	var singlePinResponse struct {
 		ResourceResponse struct {
 			Data struct {
-				Title       string `json:"title"`
-				Description string `json:"description"`
-				Images      struct {
-					Orig struct {
-						URL string `json:"url"`
-					} `json:"orig"`
-					Size736x struct {
-						URL string `json:"url"`
-					} `json:"736x"`
-					Size474x struct {
-						URL string `json:"url"`
-					} `json:"474x"`
-					Size564x struct {
-						URL string `json:"url"`
-					} `json:"564x"`
-					Size236x struct {
-						URL string `json:"url"`
-					} `json:"236x"`
-				} `json:"images"`
-				Pinner struct {
+				Title       string          `json:"title"`
+				Description string          `json:"description"`
+				Images      PinterestImages `json:"images"`
+				Pinner      struct {
 					FullName string `json:"full_name"`
 					Username string `json:"username"`
 				} `json:"pinner"`
@@ -470,16 +485,11 @@ func fetchPinDetails(pinID string, csrftoken string) Pin {
 		PinnerUser:  strings.TrimSpace(data.Pinner.Username),
 	}
 
-	if data.Images.Orig.URL != "" {
-		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Orig.URL))
-	} else if data.Images.Size736x.URL != "" {
-		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Size736x.URL))
-	} else if data.Images.Size564x.URL != "" {
-		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Size564x.URL))
-	} else if data.Images.Size474x.URL != "" {
-		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Size474x.URL))
-	} else if data.Images.Size236x.URL != "" {
-		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(data.Images.Size236x.URL))
+	bestImage := extractBestImageInfo(data.Images)
+	if bestImage != nil {
+		pin.ImageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL))
+		pin.ImageHeight = bestImage.Height
+		pin.ImageWidth = bestImage.Width
 	}
 
 	return pin
@@ -557,24 +567,8 @@ func fetchRelatedPins(pinID string, csrftoken string, bookmark string) ([]Pin, s
 				TitleRaw    json.RawMessage `json:"title"`
 				GridTitle   string          `json:"grid_title"`
 				Description string          `json:"description"`
-				Images      struct {
-					Orig struct {
-						URL string `json:"url"`
-					} `json:"orig"`
-					Size474x struct {
-						URL string `json:"url"`
-					} `json:"474x"`
-					Size736x struct {
-						URL string `json:"url"`
-					} `json:"736x"`
-					Size564x struct {
-						URL string `json:"url"`
-					} `json:"564x"`
-					Size236x struct {
-						URL string `json:"url"`
-					} `json:"236x"`
-				} `json:"images"`
-				Pinner struct {
+				Images      PinterestImages `json:"images"`
+				Pinner      struct {
 					FullName string `json:"full_name"`
 					Username string `json:"username"`
 				} `json:"pinner"`
@@ -622,25 +616,15 @@ func fetchRelatedPins(pinID string, csrftoken string, bookmark string) ([]Pin, s
 			title = result.Description
 		}
 
-		var imageURL string
-		if result.Images.Orig.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Orig.URL))
-		} else if result.Images.Size736x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size736x.URL))
-		} else if result.Images.Size564x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size564x.URL))
-		} else if result.Images.Size474x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size474x.URL))
-		} else if result.Images.Size236x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size236x.URL))
-		}
-
-		if imageURL != "" {
+		bestImage := extractBestImageInfo(result.Images)
+		if bestImage != nil {
 			related = append(related, Pin{
-				ID:         result.ID,
-				ImageURL:   imageURL,
-				Title:      strings.TrimSpace(title),
-				PinnerName: strings.TrimSpace(result.Pinner.FullName),
+				ID:          result.ID,
+				ImageURL:    fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL)),
+				ImageWidth:  bestImage.Width,
+				ImageHeight: bestImage.Height,
+				Title:       strings.TrimSpace(title),
+				PinnerName:  strings.TrimSpace(result.Pinner.FullName),
 			})
 		}
 	}
@@ -1121,25 +1105,9 @@ func fetchUserCreatedPins(userID string, username string, csrftoken string, book
 	var responseData struct {
 		ResourceResponse struct {
 			Data []struct {
-				ID     string `json:"id"`
-				Type   string `json:"type"`
-				Images struct {
-					Orig struct {
-						URL string `json:"url"`
-					} `json:"orig"`
-					Size736x struct {
-						URL string `json:"url"`
-					} `json:"736x"`
-					Size474x struct {
-						URL string `json:"url"`
-					} `json:"474x"`
-					Size564x struct {
-						URL string `json:"url"`
-					} `json:"564x"`
-					Size236x struct {
-						URL string `json:"url"`
-					} `json:"236x"`
-				} `json:"images"`
+				ID     string          `json:"id"`
+				Type   string          `json:"type"`
+				Images PinterestImages `json:"images"`
 				Pinner struct {
 					FullName string `json:"full_name"`
 					Username string `json:"username"`
@@ -1159,24 +1127,14 @@ func fetchUserCreatedPins(userID string, username string, csrftoken string, book
 			continue
 		}
 
-		var imageURL string
-		if result.Images.Orig.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Orig.URL))
-		} else if result.Images.Size736x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size736x.URL))
-		} else if result.Images.Size564x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size564x.URL))
-		} else if result.Images.Size474x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size474x.URL))
-		} else if result.Images.Size236x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size236x.URL))
-		}
-
-		if imageURL != "" {
+		bestImage := extractBestImageInfo(result.Images)
+		if bestImage != nil {
 			pins = append(pins, Pin{
-				ID:         result.ID,
-				ImageURL:   imageURL,
-				PinnerName: strings.TrimSpace(result.Pinner.FullName),
+				ID:          result.ID,
+				ImageURL:    fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL)),
+				ImageWidth:  bestImage.Width,
+				ImageHeight: bestImage.Height,
+				PinnerName:  strings.TrimSpace(result.Pinner.FullName),
 			})
 		}
 	}
@@ -1254,25 +1212,9 @@ func fetchUserProfilePins(username string, csrftoken string, bookmark string) ([
 	var responseData struct {
 		ResourceResponse struct {
 			Data []struct {
-				ID     string `json:"id"`
-				Type   string `json:"type"`
-				Images struct {
-					Orig struct {
-						URL string `json:"url"`
-					} `json:"orig"`
-					Size736x struct {
-						URL string `json:"url"`
-					} `json:"736x"`
-					Size474x struct {
-						URL string `json:"url"`
-					} `json:"474x"`
-					Size564x struct {
-						URL string `json:"url"`
-					} `json:"564x"`
-					Size236x struct {
-						URL string `json:"url"`
-					} `json:"236x"`
-				} `json:"images"`
+				ID     string          `json:"id"`
+				Type   string          `json:"type"`
+				Images PinterestImages `json:"images"`
 				Pinner struct {
 					FullName string `json:"full_name"`
 					Username string `json:"username"`
@@ -1292,24 +1234,14 @@ func fetchUserProfilePins(username string, csrftoken string, bookmark string) ([
 			continue
 		}
 
-		var imageURL string
-		if result.Images.Orig.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Orig.URL))
-		} else if result.Images.Size736x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size736x.URL))
-		} else if result.Images.Size564x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size564x.URL))
-		} else if result.Images.Size474x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size474x.URL))
-		} else if result.Images.Size236x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size236x.URL))
-		}
-
-		if imageURL != "" {
+		bestImage := extractBestImageInfo(result.Images)
+		if bestImage != nil {
 			pins = append(pins, Pin{
-				ID:         result.ID,
-				ImageURL:   imageURL,
-				PinnerName: strings.TrimSpace(result.Pinner.FullName),
+				ID:          result.ID,
+				ImageURL:    fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL)),
+				ImageWidth:  bestImage.Width,
+				ImageHeight: bestImage.Height,
+				PinnerName:  strings.TrimSpace(result.Pinner.FullName),
 			})
 		}
 	}
@@ -1486,25 +1418,9 @@ func fetchBoardPins(boardID string, sourceURL string, csrftoken string, bookmark
 	var responseData struct {
 		ResourceResponse struct {
 			Data []struct {
-				ID     string `json:"id"`
-				Type   string `json:"type"`
-				Images struct {
-					Orig struct {
-						URL string `json:"url"`
-					} `json:"orig"`
-					Size736x struct {
-						URL string `json:"url"`
-					} `json:"736x"`
-					Size474x struct {
-						URL string `json:"url"`
-					} `json:"474x"`
-					Size564x struct {
-						URL string `json:"url"`
-					} `json:"564x"`
-					Size236x struct {
-						URL string `json:"url"`
-					} `json:"236x"`
-				} `json:"images"`
+				ID     string          `json:"id"`
+				Type   string          `json:"type"`
+				Images PinterestImages `json:"images"`
 				Pinner struct {
 					FullName string `json:"full_name"`
 					Username string `json:"username"`
@@ -1524,24 +1440,14 @@ func fetchBoardPins(boardID string, sourceURL string, csrftoken string, bookmark
 			continue
 		}
 
-		var imageURL string
-		if result.Images.Orig.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Orig.URL))
-		} else if result.Images.Size736x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size736x.URL))
-		} else if result.Images.Size564x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size564x.URL))
-		} else if result.Images.Size474x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size474x.URL))
-		} else if result.Images.Size236x.URL != "" {
-			imageURL = fmt.Sprintf("/image?url=%s", url.QueryEscape(result.Images.Size236x.URL))
-		}
-
-		if imageURL != "" {
+		bestImage := extractBestImageInfo(result.Images)
+		if bestImage != nil {
 			pins = append(pins, Pin{
-				ID:         result.ID,
-				ImageURL:   imageURL,
-				PinnerName: strings.TrimSpace(result.Pinner.FullName),
+				ID:          result.ID,
+				ImageURL:    fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL)),
+				ImageWidth:  bestImage.Width,
+				ImageHeight: bestImage.Height,
+				PinnerName:  strings.TrimSpace(result.Pinner.FullName),
 			})
 		}
 	}
