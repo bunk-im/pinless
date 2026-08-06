@@ -141,8 +141,10 @@
 
         .grid-container div img {
             width: 100%;
+            height: auto;
             border-radius: 16px;
             display: block;
+            object-fit: contain;
         }
 
         @media (max-width: 600px) {
@@ -195,7 +197,7 @@
         {{ range .Pins }}
         <div>
             <a href="/pin/{{.ID}}">
-                <img src="{{.ImageURL}}" alt="Pin image" />
+                <img src="{{.ImageURL}}" width="{{.ImageWidth}}" height="{{.ImageHeight}}" alt="Pin image" />
             </a>
         </div>
         {{ end }}

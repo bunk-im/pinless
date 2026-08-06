@@ -177,8 +177,10 @@
 
         .grid-container div img {
             width: 100%;
+            height: auto;
             border-radius: 16px;
             display: block;
+            object-fit: contain;
             cursor: pointer;
         }
 
@@ -213,7 +215,7 @@
         {{end}}
         <div class="pin-container">
         {{if .Pin.ImageURL}}
-        <img src="{{ .Pin.ImageURL }}" alt="{{ if .Pin.Title }}{{ .Pin.Title }}{{ else if .Pin.Description }}{{ .Pin.Description }}{{ else if .Pin.PinnerName }}Pin by {{ .Pin.PinnerName }}{{ else }}Pin image{{ end }}" />
+        <img src="{{ .Pin.ImageURL }}" width="{{ .Pin.ImageWidth }}" height="{{ .Pin.ImageWidth }}" alt="{{ if .Pin.Title }}{{ .Pin.Title }}{{ else if .Pin.Description }}{{ .Pin.Description }}{{ else if .Pin.PinnerName }}Pin by {{ .Pin.PinnerName }}{{ else }}Pin image{{ end }}" />
         {{end}}
         <div class="pin-info">
             {{if .Pin.Title}}
@@ -236,7 +238,7 @@
             {{range .Related}}
             <div>
                 <a href="/pin/{{.ID}}?q={{ $.Query | urlquery }}&from={{ $.Pin.ID }}">
-                    <img src="{{.ImageURL}}" alt="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" title="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" />
+                    <img src="{{.ImageURL}}" width="{{.ImageWidth}}" height="{{.ImageHeight}}" alt="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" title="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" />
                 </a>
             </div>
             {{end}}
