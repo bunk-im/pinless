@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ if ne .Pin.Title "" }}{{ .Pin.Title }} - Pinless{{ else if ne .Pin.Description "" }}{{ if gt (len .Pin.Description) 50 }}{{ slice .Pin.Description 0 50 }}... - Pinless{{ else }}{{ .Pin.Description }} - Pinless{{ end }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }} - Pinless{{ else }}Pinless{{ end }}</title>
-    <meta property="og:title" content="{{ if ne .Pin.Title "" }}{{ .Pin.Title }}{{ else if ne .Pin.Description "" }}{{ .Pin.Description }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }}{{ else }}Pinless{{ end }}">
+    <title>{{ if .Error }}Pin unavailable{{ else if ne .Pin.Title "" }}{{ .Pin.Title }} - Pinless{{ else if ne .Pin.Description "" }}{{ if gt (len .Pin.Description) 50 }}{{ slice .Pin.Description 0 50 }}... - Pinless{{ else }}{{ .Pin.Description }} - Pinless{{ end }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }} - Pinless{{ else }}Pinless{{ end }}</title>
+    <meta property="og:title" content="{{ if .Error }}Pin unavailable{{ else if ne .Pin.Title "" }}{{ .Pin.Title }}{{ else if ne .Pin.Description "" }}{{ .Pin.Description }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }}{{ else }}Pinless{{ end }}">
     <meta property="og:description" content="{{ if ne .Pin.Description "" }}{{ .Pin.Description }}{{ else if ne .Pin.Title "" }}{{ .Pin.Title }}{{ else if ne .Pin.PinnerName "" }}Pin by {{ .Pin.PinnerName }}{{ else }}A pin on Pinless{{ end }}">
     {{ if .OGImage }}<meta property="og:image" content="{{ .OGImage }}">{{ end }}
     <meta property="og:url" content="{{ .PageURL }}">
@@ -189,6 +189,38 @@
             color: #888;
             padding: 40px;
         }
+
+        .error-container {
+            max-width: 600px;
+            width: 100%;
+            background: #1e1e1e;
+            border-radius: 16px;
+            padding: 40px 24px;
+            text-align: center;
+            box-sizing: border-box;
+            margin-bottom: 40px;
+        }
+
+        .error-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .error-message {
+            color: #ccc;
+            margin-bottom: 10px;
+        }
+
+        .error-hint {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 24px;
+        }
+
+        .error-back {
+            color: #e60023;
+        }
     </style>
 </head>
 
@@ -207,6 +239,18 @@
         </form>
     </div>
 
+    {{if .Error}}
+    <div class="error-container">
+        <div class="error-title">Couldn't load this pin</div>
+        <div class="error-message">{{ .Error }}</div>
+        <div class="error-hint">Pinterest may be blocking access to this pin for logged-out users.</div>
+        {{if .Query}}
+        <a class="error-back" href="/search/pins/?q={{ .Query | urlquery }}">← Back to search</a>
+        {{else}}
+        <a class="error-back" href="/">← Back to Pinless</a>
+        {{end}}
+    </div>
+    {{else}}
     <div style="display: flex; align-items: center; gap: 10px; max-width: 850px; width: 100%;">
         {{if .From}}
         <a href="/pin/{{.From}}?q={{ .Query | urlquery }}" style="color: #888; text-decoration: none; font-size: 2rem; padding: 10px;">←</a>
@@ -237,7 +281,7 @@
         <div class="grid-container">
             {{range .Related}}
             <div>
-                <a href="/pin/{{.ID}}?q={{ $.Query | urlquery }}&from={{ $.Pin.ID }}">
+                <a href="{{.ImageURL}}">
                     <img src="{{.ImageURL}}" width="{{.ImageWidth}}" height="{{.ImageHeight}}" alt="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" title="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" />
                 </a>
             </div>
@@ -254,6 +298,7 @@
         <div class="no-related">No related pins found</div>
         {{end}}
     </div>
+    {{end}}
 </body>
 
 </html>

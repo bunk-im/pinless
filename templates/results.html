@@ -154,7 +154,7 @@
     <div class="grid-container">
         {{range .Results}}
         <div>
-            <a href="/pin/{{.ID}}?q={{ $.Query | urlquery }}">
+            <a href="{{.Image}}">
                 <img src="{{.Image}}" width="{{.ImageWidth}}" height="{{.ImageHeight}}" alt="Image" />
             </a>
         </div>

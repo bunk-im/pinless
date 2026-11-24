@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -293,7 +294,6 @@ func searchHandler(c *gin.Context) {
 		ResourceResponse struct {
 			Data struct {
 				Results []struct {
-					ID     string          `json:"id"`
 					Images PinterestImages `json:"images"`
 				} `json:"results"`
 			} `json:"data"`
@@ -330,7 +330,6 @@ func searchHandler(c *gin.Context) {
 	}
 
 	type ResultItem struct {
-		ID          string
 		Image       string
 		ImageWidth  int
 		ImageHeight int
@@ -342,7 +341,6 @@ func searchHandler(c *gin.Context) {
 		if imageUrl != "" && isAllowedDomain(imageUrl) {
 			proxyImageUrl := fmt.Sprintf("/image?url=%s", url.QueryEscape(imageUrl))
 			results = append(results, ResultItem{
-				ID:          result.ID,
 				Image:       proxyImageUrl,
 				ImageWidth:  result.Images.Orig.Width,
 				ImageHeight: result.Images.Orig.Height,
@@ -383,7 +381,24 @@ func pinHandler(c *gin.Context) {
 		}
 	}
 
-	pin := fetchPinDetails(pinID, csrftoken)
+	pin, err := fetchPinDetails(pinID, csrftoken)
+	if err != nil {
+		status := http.StatusBadGateway
+		message := "Couldn't load this pin. Please try again later."
+		var fetchErr *pinFetchError
+		if errors.As(err, &fetchErr) && fetchErr.httpStatus == http.StatusNotFound {
+			status = http.StatusNotFound
+			message = "Pin not found."
+		}
+		c.HTML(status, "pin.html", gin.H{
+			"Pin":     Pin{ID: pinID},
+			"Error":   message,
+			"Query":   query,
+			"From":    from,
+			"PageURL": absURL(c, c.Request.URL.RequestURI()),
+		})
+		return
+	}
 
 	related, nextBookmark := fetchRelatedPins(pinID, csrftoken, bookmark)
 
@@ -409,19 +424,34 @@ func pinHandler(c *gin.Context) {
 	})
 }
 
-func fetchPinDetails(pinID string, csrftoken string) Pin {
+type pinFetchError struct {
+	httpStatus int
+	message    string
+}
+
+func (e *pinFetchError) Error() string {
+	return e.message
+}
+
+func fetchPinDetails(pinID string, csrftoken string) (Pin, error) {
 	apiURL := "https://www.pinterest.com/resource/PinResource/get/"
 	sourceURL := fmt.Sprintf("/pin/%s/", pinID)
 	options := map[string]interface{}{
 		"id": pinID,
 	}
 	dataParamObj := map[string]interface{}{"options": options}
-	dataParam, _ := json.Marshal(dataParamObj)
+	dataParam, err := json.Marshal(dataParamObj)
+	if err != nil {
+		return Pin{}, fmt.Errorf("failed to encode pin request: %w", err)
+	}
 	dataParamEscaped := url.QueryEscape(string(dataParam))
 	sourceURLEscaped := url.QueryEscape(sourceURL)
 	finalURL := fmt.Sprintf("%s?source_url=%s&data=%s", apiURL, sourceURLEscaped, dataParamEscaped)
 
-	req, _ := http.NewRequest(http.MethodGet, finalURL, nil)
+	req, err := http.NewRequest(http.MethodGet, finalURL, nil)
+	if err != nil {
+		return Pin{}, fmt.Errorf("failed to create pin request: %w", err)
+	}
 	req.Header.Set("Accept", "application/json, text/javascript, */*, q=0.01")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
 	req.Header.Set("Accept-Encoding", "gzip")
@@ -438,7 +468,7 @@ func fetchPinDetails(pinID string, csrftoken string) Pin {
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return Pin{ID: pinID}
+		return Pin{}, &pinFetchError{httpStatus: http.StatusBadGateway, message: "Could not reach Pinterest."}
 	}
 	defer resp.Body.Close()
 
@@ -447,16 +477,25 @@ func fetchPinDetails(pinID string, csrftoken string) Pin {
 	if strings.Contains(contentEncoding, "gzip") {
 		gzr, err := gzip.NewReader(resp.Body)
 		if err != nil {
-			return Pin{ID: pinID}
+			return Pin{}, &pinFetchError{httpStatus: http.StatusBadGateway, message: "Pinterest returned an unreadable response."}
 		}
 		defer gzr.Close()
 		reader = gzr
 	}
 
-	bodyBytes, _ := io.ReadAll(reader)
+	bodyBytes, err := io.ReadAll(reader)
+	if err != nil {
+		return Pin{}, &pinFetchError{httpStatus: http.StatusBadGateway, message: "Pinterest returned an unreadable response."}
+	}
 
 	var singlePinResponse struct {
 		ResourceResponse struct {
+			Status  string `json:"status"`
+			Message string `json:"message"`
+			Error   struct {
+				HTTPStatus int    `json:"http_status"`
+				Message    string `json:"message"`
+			} `json:"error"`
 			Data struct {
 				Title       string          `json:"title"`
 				Description string          `json:"description"`
@@ -472,10 +511,35 @@ func fetchPinDetails(pinID string, csrftoken string) Pin {
 	}
 
 	if err := json.Unmarshal(bodyBytes, &singlePinResponse); err != nil {
-		return Pin{ID: pinID}
+		return Pin{}, &pinFetchError{
+			httpStatus: resp.StatusCode,
+			message:    fmt.Sprintf("Pinterest returned %s.", resp.Status),
+		}
 	}
 
-	data := singlePinResponse.ResourceResponse.Data
+	rr := singlePinResponse.ResourceResponse
+	if resp.StatusCode != http.StatusOK || rr.Status == "error" {
+		message := strings.TrimSpace(rr.Error.Message)
+		if message == "" {
+			message = strings.TrimSpace(rr.Message)
+		}
+		if message == "" {
+			message = fmt.Sprintf("Pinterest returned %s.", resp.Status)
+		}
+		status := resp.StatusCode
+		if rr.Error.HTTPStatus != 0 {
+			status = rr.Error.HTTPStatus
+		}
+		if status == 0 {
+			status = http.StatusBadGateway
+		}
+		return Pin{}, &pinFetchError{httpStatus: status, message: message}
+	}
+
+	data := rr.Data
+	if data.ID == "" {
+		return Pin{}, &pinFetchError{httpStatus: http.StatusNotFound, message: "Pin not found."}
+	}
 
 	pin := Pin{
 		ID:          pinID,
@@ -492,7 +556,7 @@ func fetchPinDetails(pinID string, csrftoken string) Pin {
 		pin.ImageWidth = bestImage.Width
 	}
 
-	return pin
+	return pin, nil
 }
 
 func fetchRelatedPins(pinID string, csrftoken string, bookmark string) ([]Pin, string) {
@@ -701,13 +765,13 @@ func savedHandler(c *gin.Context) {
 	}
 
 	c.HTML(http.StatusOK, "profile.html", gin.H{
-		"Profile":     profile,
-		"Boards":      boards,
-		"ProfilePins": profilePins,
-		"Bookmark":    nextBookmark,
+		"Profile":      profile,
+		"Boards":       boards,
+		"ProfilePins":  profilePins,
+		"Bookmark":     nextBookmark,
 		"PinsBookmark": pinsNextBookmark,
-		"PageURL":     absURL(c, c.Request.URL.RequestURI()),
-		"OGImage":     ogImage,
+		"PageURL":      absURL(c, c.Request.URL.RequestURI()),
+		"OGImage":      ogImage,
 	})
 }
 
@@ -819,12 +883,11 @@ func boardHandler(c *gin.Context) {
 	})
 }
 
-
 func fetchUserProfile(username string, csrftoken string) (Profile, string) {
 	apiURL := "https://www.pinterest.com/resource/UserResource/get/"
 	sourceURL := fmt.Sprintf("/%s/", username)
 	options := map[string]interface{}{
-		"username":     username,
+		"username":      username,
 		"field_set_key": "profile",
 	}
 	dataParamObj := map[string]interface{}{"options": options}
@@ -878,17 +941,17 @@ func fetchUserProfile(username string, csrftoken string) (Profile, string) {
 	var responseData struct {
 		ResourceResponse struct {
 			Data struct {
-				ID            string `json:"id"`
-				Username      string `json:"username"`
-				FullName      string `json:"full_name"`
-				FirstName     string `json:"first_name"`
-				About         string `json:"about"`
-				PinCount      int    `json:"pin_count"`
-				BoardCount    int    `json:"board_count"`
-				FollowerCount int    `json:"follower_count"`
-				ImageLargeURL string `json:"image_large_url"`
+				ID             string `json:"id"`
+				Username       string `json:"username"`
+				FullName       string `json:"full_name"`
+				FirstName      string `json:"first_name"`
+				About          string `json:"about"`
+				PinCount       int    `json:"pin_count"`
+				BoardCount     int    `json:"board_count"`
+				FollowerCount  int    `json:"follower_count"`
+				ImageLargeURL  string `json:"image_large_url"`
 				ImageMediumURL string `json:"image_medium_url"`
-				WebsiteURL    string `json:"website_url"`
+				WebsiteURL     string `json:"website_url"`
 			} `json:"data"`
 		} `json:"resource_response"`
 	}
@@ -923,10 +986,10 @@ func fetchBoards(username string, csrftoken string, bookmark string) ([]Board, s
 	apiURL := "https://www.pinterest.com/resource/BoardsFeedResource/get/"
 	sourceURL := fmt.Sprintf("/%s/", username)
 	options := map[string]interface{}{
-		"field_set_key": "profile_grid_item",
+		"field_set_key":  "profile_grid_item",
 		"filter_stories": false,
-		"sort":          "last_pinned_to",
-		"username":      username,
+		"sort":           "last_pinned_to",
+		"username":       username,
 	}
 	if bookmark != "" {
 		options["bookmarks"] = []string{bookmark}
@@ -994,11 +1057,11 @@ func fetchBoards(username string, csrftoken string, bookmark string) ([]Board, s
 	var responseData struct {
 		ResourceResponse struct {
 			Data []struct {
-				ID       string `json:"id"`
-				Type     string `json:"type"`
-				Name     string `json:"name"`
-				URL      string `json:"url"`
-				PinCount int    `json:"pin_count"`
+				ID          string `json:"id"`
+				Type        string `json:"type"`
+				Name        string `json:"name"`
+				URL         string `json:"url"`
+				PinCount    int    `json:"pin_count"`
 				CoverImages struct {
 					Cover200x150 *struct {
 						URL string `json:"url"`
@@ -1253,10 +1316,10 @@ func fetchBoardInfo(username string, slug string, csrftoken string) Board {
 	apiURL := "https://www.pinterest.com/resource/BoardResource/get/"
 	sourceURL := fmt.Sprintf("/%s/%s/", username, slug)
 	options := map[string]interface{}{
-		"field_set_key": "profile_grid_item",
+		"field_set_key":  "profile_grid_item",
 		"is_mobile_fork": true,
-		"username":      username,
-		"slug":          slug,
+		"username":       username,
+		"slug":           slug,
 	}
 	dataParamObj := map[string]interface{}{"options": options}
 	dataParam, _ := json.Marshal(dataParamObj)
@@ -1301,13 +1364,13 @@ func fetchBoardInfo(username string, slug string, csrftoken string) Board {
 	var responseData struct {
 		ResourceResponse struct {
 			Data struct {
-				ID       string `json:"id"`
-				Name     string `json:"name"`
-				URL      string `json:"url"`
-				PinCount int    `json:"pin_count"`
+				ID            string `json:"id"`
+				Name          string `json:"name"`
+				URL           string `json:"url"`
+				PinCount      int    `json:"pin_count"`
 				ImageCoverURL string `json:"image_cover_url"`
-				Description string `json:"description"`
-				Owner struct {
+				Description   string `json:"description"`
+				Owner         struct {
 					Username string `json:"username"`
 					FullName string `json:"full_name"`
 				} `json:"owner"`
@@ -1339,13 +1402,13 @@ func fetchBoardInfo(username string, slug string, csrftoken string) Board {
 func fetchBoardPins(boardID string, sourceURL string, csrftoken string, bookmark string) ([]Pin, string, string) {
 	apiURL := "https://www.pinterest.com/resource/BoardFeedResource/get/"
 	options := map[string]interface{}{
-		"add_vase":            true,
-		"board_id":            boardID,
-		"field_set_key":       "react_grid_pin",
-		"filter_section_pins": false,
-		"is_react":            true,
-		"prepend":             false,
-		"page_size":           15,
+		"add_vase":             true,
+		"board_id":             boardID,
+		"field_set_key":        "react_grid_pin",
+		"filter_section_pins":  false,
+		"is_react":             true,
+		"prepend":              false,
+		"page_size":            15,
 		"redux_normalize_feed": true,
 	}
 	if bookmark != "" {
@@ -1480,14 +1543,13 @@ func proxyImageHandler(c *gin.Context) {
 		return
 	}
 
-	imageSrc, err := fetchImage(imageUrl)
+	imageSrc, contentType, err := fetchImage(imageUrl)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch image"})
 		return
 	}
 
-	c.Header("Content-Type", "image/png")
-	c.Data(http.StatusOK, "image/png", imageSrc)
+	c.Data(http.StatusOK, contentType, imageSrc)
 }
 
 func isAllowedDomain(urlStr string) bool {
@@ -1515,11 +1577,26 @@ var safeClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func fetchImage(imageUrl string) ([]byte, error) {
+func fetchImage(imageUrl string) ([]byte, string, error) {
 	resp, err := safeClient.Get(imageUrl)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch image")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch image: %w", err)
 	}
 	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("failed to fetch image: upstream returned %s", resp.Status)
+	}
+
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if !strings.HasPrefix(contentType, "image/") {
+		contentType = "application/octet-stream"
+	}
+
+	imageBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read image: %w", err)
+	}
+
+	return imageBytes, contentType, nil
 }
