@@ -5,3 +5,7 @@ services:
     pull_policy: always
     ports:
       - "3000:3000"
+    environment:
+      USE_LOGIN: ${USE_LOGIN:-true}
+      PINTEREST_SESSION: ${PINTEREST_SESSION:-}
+      PINTEREST_CSRF_TOKEN: ${PINTEREST_CSRF_TOKEN:-}

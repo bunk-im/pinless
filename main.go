@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ type SearchResult struct {
 
 type Pin struct {
 	ID          string `json:"id"`
+	Link        string `json:"link"`
 	ImageWidth  int    `json:"width"`
 	ImageHeight int    `json:"height"`
 	ImageURL    string `json:"image_url"`
@@ -70,6 +72,153 @@ type Board struct {
 
 var allowedDomains = []string{"pinimg.com", "i.pinimg.com", "pinterest.com"}
 
+var (
+	pinterestCookieHeader string
+	pinterestCSRFToken    string
+)
+
+func loadDotEnv() {
+	data, err := os.ReadFile(".env")
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		value = strings.Trim(value, `"'`)
+		if key == "" || value == "" || os.Getenv(key) != "" {
+			continue
+		}
+		os.Setenv(key, value)
+	}
+}
+
+func useLoginEnabled() bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv("USE_LOGIN")))
+	switch value {
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+func initPinterestAuth() {
+	if !useLoginEnabled() {
+		fmt.Println("Pinterest auth: disabled by USE_LOGIN")
+		return
+	}
+
+	session := strings.TrimSpace(os.Getenv("PINTEREST_SESSION"))
+	csrf := strings.TrimSpace(os.Getenv("PINTEREST_CSRF_TOKEN"))
+	if session != "" || csrf != "" {
+		if session == "" || csrf == "" {
+			fmt.Fprintln(os.Stderr, "Pinterest auth: PINTEREST_SESSION and PINTEREST_CSRF_TOKEN must both be set")
+			return
+		}
+		pinterestCSRFToken = csrf
+		pinterestCookieHeader = fmt.Sprintf("csrftoken=%s; _pinterest_sess=%s", csrf, session)
+		fmt.Println("Pinterest auth: enabled")
+		return
+	}
+
+	raw := strings.TrimSpace(os.Getenv("PINTEREST_COOKIES"))
+	if raw == "" {
+		path := strings.TrimSpace(os.Getenv("PINTEREST_COOKIES_FILE"))
+		if path == "" {
+			return
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Pinterest auth: failed to read PINTEREST_COOKIES_FILE")
+			return
+		}
+		raw = strings.TrimSpace(string(data))
+	}
+	if raw == "" {
+		return
+	}
+
+	raw = strings.TrimSpace(strings.TrimPrefix(raw, "Cookie:"))
+	values := map[string]string{}
+	if strings.HasPrefix(raw, "[") {
+		var cookies []struct {
+			Name  string `json:"name"`
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal([]byte(raw), &cookies); err != nil {
+			fmt.Fprintln(os.Stderr, "Pinterest auth: cookie JSON is invalid")
+			return
+		}
+		for _, cookie := range cookies {
+			if cookie.Name == "csrftoken" || cookie.Name == "_pinterest_sess" {
+				values[cookie.Name] = cookie.Value
+			}
+		}
+	} else {
+		for _, part := range strings.Split(raw, ";") {
+			key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+			if ok && (key == "csrftoken" || key == "_pinterest_sess") {
+				values[key] = value
+			}
+		}
+	}
+
+	session = values["_pinterest_sess"]
+	csrf = values["csrftoken"]
+	if session == "" || csrf == "" {
+		fmt.Fprintln(os.Stderr, "Pinterest auth: both csrftoken and _pinterest_sess cookies are required")
+		return
+	}
+	pinterestCSRFToken = csrf
+	pinterestCookieHeader = fmt.Sprintf("csrftoken=%s; _pinterest_sess=%s", csrf, session)
+	fmt.Println("Pinterest auth: enabled")
+}
+
+func setPinterestAuth(req *http.Request, csrftoken string) {
+	token := pinterestCSRFToken
+	if token == "" {
+		token = csrftoken
+	}
+	if token != "" {
+		req.Header.Set("x-csrftoken", token)
+	}
+
+	if pinterestCookieHeader != "" {
+		req.Header.Set("cookie", pinterestCookieHeader)
+	} else if token != "" {
+		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", token))
+	}
+}
+
+func isNumericPinID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func pinLink(pinID string, imageURL string) string {
+	if pinterestCookieHeader != "" && isNumericPinID(pinID) {
+		return "/pin/" + pinID
+	}
+	return imageURL
+}
+
 func absURL(c *gin.Context, path string) string {
 	scheme := "http"
 	if c.Request.TLS != nil {
@@ -108,6 +257,9 @@ func extractBestImageInfo(pi PinterestImages) *PinterestImage {
 }
 
 func main() {
+	loadDotEnv()
+	initPinterestAuth()
+
 	gin.SetMode(gin.ReleaseMode)
 	gin.DefaultWriter = io.Discard
 	gin.DefaultErrorWriter = io.Discard
@@ -176,7 +328,9 @@ func searchHandler(c *gin.Context) {
 	if csrftoken == "" {
 		csrftoken = fetchCSRFToken()
 		if csrftoken != "" {
-			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			if pinterestCookieHeader == "" {
+				c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			}
 		}
 	}
 
@@ -221,10 +375,7 @@ func searchHandler(c *gin.Context) {
 	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -238,7 +389,9 @@ func searchHandler(c *gin.Context) {
 		for _, ck := range newToken {
 			if ck != nil && ck.Name == "csrftoken" && ck.Value != "" {
 				csrftoken = ck.Value
-				c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+				if pinterestCookieHeader == "" {
+					c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+				}
 				break
 			}
 		}
@@ -294,6 +447,7 @@ func searchHandler(c *gin.Context) {
 		ResourceResponse struct {
 			Data struct {
 				Results []struct {
+					ID     string          `json:"id"`
 					Images PinterestImages `json:"images"`
 				} `json:"results"`
 			} `json:"data"`
@@ -330,6 +484,7 @@ func searchHandler(c *gin.Context) {
 	}
 
 	type ResultItem struct {
+		Link        string
 		Image       string
 		ImageWidth  int
 		ImageHeight int
@@ -340,7 +495,15 @@ func searchHandler(c *gin.Context) {
 		imageUrl := result.Images.Orig.URL
 		if imageUrl != "" && isAllowedDomain(imageUrl) {
 			proxyImageUrl := fmt.Sprintf("/image?url=%s", url.QueryEscape(imageUrl))
+			link := proxyImageUrl
+			if pinterestCookieHeader != "" && isNumericPinID(result.ID) {
+				link = "/pin/" + result.ID
+				if query != "" {
+					link += "?q=" + url.QueryEscape(query)
+				}
+			}
 			results = append(results, ResultItem{
+				Link:        link,
 				Image:       proxyImageUrl,
 				ImageWidth:  result.Images.Orig.Width,
 				ImageHeight: result.Images.Orig.Height,
@@ -377,7 +540,9 @@ func pinHandler(c *gin.Context) {
 	if csrftoken == "" {
 		csrftoken = fetchCSRFToken()
 		if csrftoken != "" {
-			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			if pinterestCookieHeader == "" {
+				c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			}
 		}
 	}
 
@@ -460,10 +625,7 @@ func fetchPinDetails(pinID string, csrftoken string) (Pin, error) {
 	req.Header.Set("x-pinterest-source-url", sourceURL)
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -597,10 +759,7 @@ func fetchRelatedPins(pinID string, csrftoken string, bookmark string) ([]Pin, s
 	req.Header.Set("x-pinterest-source-url", sourceURL)
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -682,9 +841,11 @@ func fetchRelatedPins(pinID string, csrftoken string, bookmark string) ([]Pin, s
 
 		bestImage := extractBestImageInfo(result.Images)
 		if bestImage != nil {
+			imageURL := fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL))
 			related = append(related, Pin{
 				ID:          result.ID,
-				ImageURL:    fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL)),
+				Link:        pinLink(result.ID, imageURL),
+				ImageURL:    imageURL,
 				ImageWidth:  bestImage.Width,
 				ImageHeight: bestImage.Height,
 				Title:       strings.TrimSpace(title),
@@ -711,7 +872,9 @@ func savedHandler(c *gin.Context) {
 	if csrftoken == "" {
 		csrftoken = fetchCSRFToken()
 		if csrftoken != "" {
-			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			if pinterestCookieHeader == "" {
+				c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			}
 		}
 	}
 
@@ -736,13 +899,17 @@ func savedHandler(c *gin.Context) {
 	profile, profileToken := fetchUserProfile(username, csrftoken)
 	if profileToken != "" {
 		csrftoken = profileToken
-		c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+		if pinterestCookieHeader == "" {
+			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+		}
 	}
 
 	boards, nextBookmark, boardToken := fetchBoards(username, csrftoken, bookmark)
 	if boardToken != "" {
 		csrftoken = boardToken
-		c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+		if pinterestCookieHeader == "" {
+			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+		}
 	}
 
 	if nextBookmark != "" {
@@ -785,7 +952,9 @@ func createdHandler(c *gin.Context) {
 	if csrftoken == "" {
 		csrftoken = fetchCSRFToken()
 		if csrftoken != "" {
-			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			if pinterestCookieHeader == "" {
+				c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			}
 		}
 	}
 
@@ -801,7 +970,9 @@ func createdHandler(c *gin.Context) {
 	profile, profileToken := fetchUserProfile(username, csrftoken)
 	if profileToken != "" {
 		csrftoken = profileToken
-		c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+		if pinterestCookieHeader == "" {
+			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+		}
 	}
 
 	pins, nextBookmark := fetchUserCreatedPins(profile.ID, username, csrftoken, bookmark)
@@ -837,7 +1008,9 @@ func boardHandler(c *gin.Context) {
 	if csrftoken == "" {
 		csrftoken = fetchCSRFToken()
 		if csrftoken != "" {
-			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			if pinterestCookieHeader == "" {
+				c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			}
 		}
 	}
 
@@ -859,7 +1032,9 @@ func boardHandler(c *gin.Context) {
 		pins, nextBookmark, feedToken = fetchBoardPins(boardInfo.ID, sourceURL, csrftoken, bookmark)
 		if feedToken != "" {
 			csrftoken = feedToken
-			c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			if pinterestCookieHeader == "" {
+				c.SetCookie("csrftoken", csrftoken, 0, "/", "", c.Request.TLS != nil, true)
+			}
 		}
 	}
 
@@ -905,10 +1080,7 @@ func fetchUserProfile(username string, csrftoken string) (Profile, string) {
 	req.Header.Set("x-pinterest-source-url", sourceURL)
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -1021,10 +1193,7 @@ func fetchBoards(username string, csrftoken string, bookmark string) ([]Board, s
 	req.Header.Set("x-pinterest-source-url", sourceURL)
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -1140,10 +1309,7 @@ func fetchUserCreatedPins(userID string, username string, csrftoken string, book
 	req.Header.Set("x-pinterest-pws-handler", fmt.Sprintf("www/%s/_created.js", username))
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -1192,9 +1358,11 @@ func fetchUserCreatedPins(userID string, username string, csrftoken string, book
 
 		bestImage := extractBestImageInfo(result.Images)
 		if bestImage != nil {
+			imageURL := fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL))
 			pins = append(pins, Pin{
 				ID:          result.ID,
-				ImageURL:    fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL)),
+				Link:        pinLink(result.ID, imageURL),
+				ImageURL:    imageURL,
 				ImageWidth:  bestImage.Width,
 				ImageHeight: bestImage.Height,
 				PinnerName:  strings.TrimSpace(result.Pinner.FullName),
@@ -1247,10 +1415,7 @@ func fetchUserProfilePins(username string, csrftoken string, bookmark string) ([
 	req.Header.Set("x-pinterest-pws-handler", fmt.Sprintf("www/%s.js", username))
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -1299,9 +1464,11 @@ func fetchUserProfilePins(username string, csrftoken string, bookmark string) ([
 
 		bestImage := extractBestImageInfo(result.Images)
 		if bestImage != nil {
+			imageURL := fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL))
 			pins = append(pins, Pin{
 				ID:          result.ID,
-				ImageURL:    fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL)),
+				Link:        pinLink(result.ID, imageURL),
+				ImageURL:    imageURL,
 				ImageWidth:  bestImage.Width,
 				ImageHeight: bestImage.Height,
 				PinnerName:  strings.TrimSpace(result.Pinner.FullName),
@@ -1336,10 +1503,7 @@ func fetchBoardInfo(username string, slug string, csrftoken string) Board {
 	req.Header.Set("x-pinterest-source-url", sourceURL)
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -1445,10 +1609,7 @@ func fetchBoardPins(boardID string, sourceURL string, csrftoken string, bookmark
 	req.Header.Set("x-pinterest-pws-handler", "www/[username]/[slug].js")
 	req.Header.Set("Referer", "https://www.pinterest.com/")
 
-	if csrftoken != "" {
-		req.Header.Set("x-csrftoken", csrftoken)
-		req.Header.Set("cookie", fmt.Sprintf("csrftoken=%s", csrftoken))
-	}
+	setPinterestAuth(req, csrftoken)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	resp, err := client.Do(req)
@@ -1505,9 +1666,11 @@ func fetchBoardPins(boardID string, sourceURL string, csrftoken string, bookmark
 
 		bestImage := extractBestImageInfo(result.Images)
 		if bestImage != nil {
+			imageURL := fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL))
 			pins = append(pins, Pin{
 				ID:          result.ID,
-				ImageURL:    fmt.Sprintf("/image?url=%s", url.QueryEscape(bestImage.URL)),
+				Link:        pinLink(result.ID, imageURL),
+				ImageURL:    imageURL,
 				ImageWidth:  bestImage.Width,
 				ImageHeight: bestImage.Height,
 				PinnerName:  strings.TrimSpace(result.Pinner.FullName),
@@ -1519,6 +1682,10 @@ func fetchBoardPins(boardID string, sourceURL string, csrftoken string, bookmark
 }
 
 func fetchCSRFToken() string {
+	if pinterestCSRFToken != "" {
+		return ""
+	}
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, _ := http.NewRequest(http.MethodGet, "https://www.pinterest.com/", nil)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
