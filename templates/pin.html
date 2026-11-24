@@ -281,7 +281,7 @@
         <div class="grid-container">
             {{range .Related}}
             <div>
-                <a href="{{.ImageURL}}">
+                <a href="{{.Link}}">
                     <img src="{{.ImageURL}}" width="{{.ImageWidth}}" height="{{.ImageHeight}}" alt="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" title="{{ if .Title }}{{ .Title }}{{ else if .Description }}{{ .Description }}{{ else if .PinnerName }}Pin by {{ .PinnerName }}{{ else }}Pin image{{ end }}" />
                 </a>
             </div>
